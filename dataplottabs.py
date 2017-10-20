@@ -184,3 +184,70 @@ class DataPlotTabs(DataPlot):
         except (KeyError, IndexError, ValueError) as error:
             print(type(error), "(" + self._data_name + "):", error)
             self._had_error = True
+
+# jupyter tabs plot using bokeh
+
+data_set = {'ax': ax, 'ay': ay, 'az': az}
+field_names_expanded = ['ax','ay','az']
+legends = ['X','Y','Z']
+
+psd = dict()
+for key in field_names_expanded:
+    f, t, psd[key] = signal.spectrogram(data_set[key],
+        fs=fs, window='hann', nperseg=256, noverlap=128,scaling='density')
+
+color_mapper = LinearColorMapper(palette=viridis(256),low=-80, high=0)
+
+plots = []
+tabs = []
+for field_name, legend in zip(field_names_expanded, legends):
+    im = [10*np.log10(psd[field_name])]
+    plots.append(figure(title='Acceleration Spectrogram [dB]',
+        plot_width=800,
+        x_range=(t[0], t[-1]),y_range=(f[0], f[-1]),
+        x_axis_label='Time',
+        y_axis_label='[Hz]',toolbar_location='above'))
+    plots[-1].image(image=im, x=t[0], y=f[0],
+        dw=t[-1], dh=f[-1],color_mapper=color_mapper)
+    color_bar = ColorBar(color_mapper=color_mapper,
+                         major_label_text_font_size="5pt",
+                         ticker=BasicTicker(desired_num_ticks=8),
+                         formatter=PrintfTickFormatter(format="%f"),
+                         label_standoff=6, border_line_color=None, location=(0, 0))
+    plots[-1].add_layout(color_bar,'right')
+    tabs.append(Panel(child=plots[-1],title=legend))
+
+bokeh_tabs = Tabs(tabs=tabs,width=800)
+show(bokeh_tabs)
+
+# using holoviews
+import holoviews as hv
+hv.extension('bokeh')
+from bokeh.models import Select, Button
+from bokeh.layouts import layout, column
+from bokeh.io import curdoc
+renderer = hv.renderer('bokeh')
+#%%opts[Image[width=800,height=400]] # [cmap=viridis(256)]]
+#%output info=True
+f, t, Sxx_x = signal.spectrogram(ax,fs=fs, window='hann',nperseg=256, noverlap=128, scaling='density')
+_, _, Sxx_y = signal.spectrogram(ay,fs=fs, window='hann',nperseg=256, noverlap=128, scaling='density')
+_, _, Sxx_z = signal.spectrogram(az,fs=fs, window='hann',nperseg=256, noverlap=128, scaling='density')
+
+#%opts Image [cmap=viridis(256)]
+
+bounds=(t[0],f[0],f[-1],t[-1])
+psd_x = 10 * np.log10(Sxx_x)
+psd_y = 10 * np.log10(Sxx_y)
+psd_z = 10 * np.log10(Sxx_z)
+ds = hv.Dataset((t,f,psd_x,psd_y,psd_z),kdims=['t','f'],vdims=['psd_x','psd_y','psd_z'])
+
+def get_spec(data, **kwargs):
+    return ds.to(hv.Image,['t','f'],vdims=[data])
+
+plot_dict = dict(width=700,height=400)
+style_dict = dict(cmap=viridis(256))
+
+dmap = hv.DynamicMap(get_spec, kdims=['Data']).redim.values(Data=['psd_x','psd_y','psd_z']).opts(
+    plot=plot_dict,style=style_dict)
+
+dmap
